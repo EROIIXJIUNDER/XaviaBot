@@ -1,11 +1,11 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
-import { getStreamFromURL, shortenURL, randomString } from global.utils;
 
+// Pass your utilities as arguments instead of using global.utils
 const config = {
     name: "sing",
-    aliases: ["play"],
+    aliases: ["play", "audio"],
     description: "Play audio from YouTube with audio recognition support.",
     usage: "[video name] / [reply to audio/video]",
     cooldown: 10,
@@ -28,7 +28,7 @@ const langData = {
     // Add more languages here if needed
 }
 
-async function onCall({ message, args, getLang, extra, data, userPermissions, prefix, api, event }) {
+async function onCall({ message, args, getLang, extra, data, userPermissions, prefix, api, event, utils }) {
     message.send(getLang("processing"));
 
     try {
@@ -56,7 +56,7 @@ async function onCall({ message, args, getLang, extra, data, userPermissions, pr
                 videoId = searchResponse.data[0].videoId;
             }
 
-            shortUrl = await shortenURL(shortUrl);
+            shortUrl = await utils.shortenURL(shortUrl);
 
         } else if (args.length === 0) {
             // If no arguments are provided
@@ -72,7 +72,7 @@ async function onCall({ message, args, getLang, extra, data, userPermissions, pr
 
             const videoUrlResponse = await axios.get(`https://youtube-kshitiz.vercel.app/download?id=${encodeURIComponent(videoId)}`);
             if (videoUrlResponse.data.length > 0) {
-                shortUrl = await shortenURL(videoUrlResponse.data[0]);
+                shortUrl = await utils.shortenURL(videoUrlResponse.data[0]);
             }
         }
 
