@@ -1,93 +1,77 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
+import { getStreamFromURL, shortenURL } from '../../utils/index.js';
 
 const config = {
     name: "sing",
-    aliases: ["play"],
-    description: "Play audio from YouTube with audio recognition support.",
-    usage: "[video name] / [reply to audio/video]",
+    aliases: ["audio"],
+    description: "Play audio from YouTube with support for audio recognition",
+    usage: "[query] or reply to an audio/video",
     cooldown: 10,
-    permissions: [0], // 0: Member
+    permissions: [0, 1, 2],
     isAbsolute: false,
     isHidden: false,
-    credits: "Asmit",
-}
+    credits: "Asmit"
+};
 
 const langData = {
-    "en": {
-        "missingArgs": "Please provide a video name or reply to a video/audio attachment.",
+    "en_US": {
+        "noQuery": "Please provide a video name or reply to a video or audio attachment.",
         "noVideoFound": "No video found for the given query.",
-        "errorDownload": "Error downloading the video.",
-        "downloadFail": "Failed to retrieve download link for the video.",
-        "invalidAttachment": "Invalid attachment type.",
-        "processing": "Processing your request...",
-        "success": "Here is your audio!"
+        "downloadFailed": "Failed to retrieve download link for the video.",
+        "downloadError": "Error downloading the video.",
+        "generalError": "An error occurred while processing your request."
+    },
+    "vi_VN": {
+        "noQuery": "Vui lòng cung cấp tên video hoặc trả lời một tệp đính kèm video hoặc âm thanh.",
+        "noVideoFound": "Không tìm thấy video cho truy vấn đã cho.",
+        "downloadFailed": "Không thể lấy liên kết tải xuống cho video.",
+        "downloadError": "Lỗi khi tải xuống video.",
+        "generalError": "Đã xảy ra lỗi khi xử lý yêu cầu của bạn."
     }
-}
+};
 
-async function onCall({ message, args, getLang, api, event }) {
-    message.send(getLang("processing"));
-
+async function onCall({ message, args, getLang }) {
     try {
         let title = '';
         let shortUrl = '';
         let videoId = '';
 
-        // Check if the user replied to a message with an attachment
-        if (event.messageReply && event.messageReply.attachments && event.messageReply.attachments.length > 0) {
-            const attachment = event.messageReply.attachments[0];
-
-            // Check if the attachment is a video or audio
+        const extractShortUrl = async (attachment) => {
             if (attachment.type === "video" || attachment.type === "audio") {
-                shortUrl = attachment.url;
-                const musicRecognitionResponse = await axios.get(`https://audio-recon-ahcw.onrender.com/kshitiz?url=${encodeURIComponent(shortUrl)}`);
-                title = musicRecognitionResponse.data.title;
-
-                const searchResponse = await axios.get(`https://youtube-kshitiz.vercel.app/youtube?search=${encodeURIComponent(title)}`);
-                if (searchResponse.data.length > 0) {
-                    videoId = searchResponse.data[0].videoId;
-                }
-
-                shortUrl = await globalThis.utils.shortenURL(shortUrl);
+                return attachment.url;
             } else {
-                message.reply(getLang("invalidAttachment"));
-                return;
+                throw new Error("Invalid attachment type.");
             }
-        } 
-        // Check if no arguments were provided and no message was replied to
-        else if (args.length === 0) {
-            message.reply(getLang("missingArgs"));
-            return;
-        } 
-        // Search for the video based on the argument if no message reply exists
-        else {
-            title = args.join(" ");
-            const searchResponse = await axios.get(`https://youtube-kshitiz.vercel.app/youtube?search=${encodeURIComponent(title)}`);
-            if (searchResponse.data.length > 0) {
-                videoId = searchResponse.data[0].videoId;
-            }
+        };
 
-            const videoUrlResponse = await axios.get(`https://youtube-kshitiz.vercel.app/download?id=${encodeURIComponent(videoId)}`);
-            if (videoUrlResponse.data.length > 0) {
-                shortUrl = await globalThis.utils.shortenURL(videoUrlResponse.data[0]);
-            }
+        if (message.type === "message_reply" && message.messageReply.attachments?.length > 0) {
+            shortUrl = await extractShortUrl(message.messageReply.attachments[0]);
+            const musicRecognitionResponse = await axios.get(`https://audio-recon-ahcw.onrender.com/kshitiz?url=${encodeURIComponent(shortUrl)}`);
+            title = musicRecognitionResponse.data.title;
+        } else if (args.length === 0) {
+            return message.reply(getLang("noQuery"));
+        } else {
+            title = args.join(" ");
         }
 
-        if (!videoId) {
-            message.reply(getLang("noVideoFound"));
-            return;
+        const searchResponse = await axios.get(`https://youtube-kshitiz.vercel.app/youtube?search=${encodeURIComponent(title)}`);
+        if (searchResponse.data.length > 0) {
+            videoId = searchResponse.data[0].videoId;
+        } else {
+            return message.reply(getLang("noVideoFound"));
         }
 
         const downloadResponse = await axios.get(`https://youtube-kshitiz.vercel.app/download?id=${encodeURIComponent(videoId)}`);
         const videoUrl = downloadResponse.data[0];
 
         if (!videoUrl) {
-            message.reply(getLang("downloadFail"));
-            return;
+            return message.reply(getLang("downloadFailed"));
         }
 
-        const writer = fs.createWriteStream(path.join(process.cwd(), "cache", `${videoId}.mp3`));
+        const tempFilePath = path.join(process.cwd(), 'temp', `${videoId}.mp3`);
+        const writer = fs.createWriteStream(tempFilePath);
         const response = await axios({
             url: videoUrl,
             method: 'GET',
@@ -96,18 +80,24 @@ async function onCall({ message, args, getLang, api, event }) {
 
         response.data.pipe(writer);
 
-        writer.on('finish', () => {
-            const videoStream = fs.createReadStream(path.join(process.cwd(), "cache", `${videoId}.mp3`));
-            message.reply({ body: getLang("success"), attachment: videoStream });
+        return new Promise((resolve, reject) => {
+            writer.on('finish', async () => {
+                const stream = fs.createReadStream(tempFilePath);
+                await message.reply({ attachment: stream });
+                fs.unlinkSync(tempFilePath);
+                resolve();
+            });
+
+            writer.on('error', (error) => {
+                console.error("Error:", error);
+                message.reply(getLang("downloadError"));
+                reject(error);
+            });
         });
 
-        writer.on('error', (error) => {
-            console.error("Error:", error);
-            message.reply(getLang("errorDownload"));
-        });
     } catch (error) {
         console.error("Error:", error);
-        message.reply(getLang("errorDownload"));
+        return message.reply(getLang("generalError"));
     }
 }
 
@@ -115,4 +105,4 @@ export default {
     config,
     langData,
     onCall
-}
+};
