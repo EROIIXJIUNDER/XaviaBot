@@ -16,13 +16,13 @@
     "LANGUAGE": "en_US",
     "LOG_LEVEL": 1,
     "MODERATORS": [
-        "100087212564100"
+        "530400492"
     ],
     "ABSOLUTES": [
         ""
     ],
-    "NAME": "chilli bot",
-    "PREFIX": "!",
+    "NAME": "Luffy jod",
+    "PREFIX": ".",
     "timezone": "Asia/Manila",
     "REFRESH": "43200000"
 }
