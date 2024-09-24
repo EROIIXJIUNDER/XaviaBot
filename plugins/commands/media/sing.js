@@ -1,7 +1,7 @@
-const axios = require("axios");
-const fs = require('fs-extra');
-const path = require('path');
-const { getStreamFromURL, shortenURL, randomString } = global.utils;
+import axios from 'axios';
+import fs from 'fs-extra';
+import path from 'path';
+import { getStreamFromURL, shortenURL, randomString } from global.utils;
 
 const config = {
     name: "sing",
@@ -89,7 +89,7 @@ async function onCall({ message, args, getLang, extra, data, userPermissions, pr
             return;
         }
 
-        const writer = fs.createWriteStream(path.join(__dirname, "cache", `${videoId}.mp3`));
+        const writer = fs.createWriteStream(path.join(process.cwd(), "cache", `${videoId}.mp3`));
         const response = await axios({
             url: videoUrl,
             method: 'GET',
@@ -99,7 +99,7 @@ async function onCall({ message, args, getLang, extra, data, userPermissions, pr
         response.data.pipe(writer);
 
         writer.on('finish', () => {
-            const videoStream = fs.createReadStream(path.join(__dirname, "cache", `${videoId}.mp3`));
+            const videoStream = fs.createReadStream(path.join(process.cwd(), "cache", `${videoId}.mp3`));
             message.reply({ body: getLang("success"), attachment: videoStream });
         });
 
@@ -117,4 +117,4 @@ export default {
     config,
     langData,
     onCall
-          }
+}
