@@ -2,10 +2,9 @@ import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 
-// Pass your utilities as arguments instead of using global.utils
 const config = {
     name: "sing",
-    aliases: ["play", "audio"],
+    aliases: ["play"],
     description: "Play audio from YouTube with audio recognition support.",
     usage: "[video name] / [reply to audio/video]",
     cooldown: 10,
@@ -24,11 +23,10 @@ const langData = {
         "invalidAttachment": "Invalid attachment type.",
         "processing": "Processing your request...",
         "success": "Here is your audio!"
-    },
-    // Add more languages here if needed
+    }
 }
 
-async function onCall({ message, args, getLang, extra, data, userPermissions, prefix, api, event, utils }) {
+async function onCall({ message, args, getLang, api, event }) {
     message.send(getLang("processing"));
 
     try {
@@ -36,34 +34,34 @@ async function onCall({ message, args, getLang, extra, data, userPermissions, pr
         let shortUrl = '';
         let videoId = '';
 
-        const extractShortUrl = async () => {
-            const attachment = event.messageReply.attachments[0];
-            if (attachment.type === "video" || attachment.type === "audio") {
-                return attachment.url;
-            } else {
-                throw new Error(getLang("invalidAttachment"));
-            }
-        };
-
+        // Check if the user replied to a message with an attachment
         if (event.messageReply && event.messageReply.attachments && event.messageReply.attachments.length > 0) {
-            // If user replied to a video or audio attachment
-            shortUrl = await extractShortUrl();
-            const musicRecognitionResponse = await axios.get(`https://audio-recon-ahcw.onrender.com/kshitiz?url=${encodeURIComponent(shortUrl)}`);
-            title = musicRecognitionResponse.data.title;
+            const attachment = event.messageReply.attachments[0];
 
-            const searchResponse = await axios.get(`https://youtube-kshitiz.vercel.app/youtube?search=${encodeURIComponent(title)}`);
-            if (searchResponse.data.length > 0) {
-                videoId = searchResponse.data[0].videoId;
+            // Check if the attachment is a video or audio
+            if (attachment.type === "video" || attachment.type === "audio") {
+                shortUrl = attachment.url;
+                const musicRecognitionResponse = await axios.get(`https://audio-recon-ahcw.onrender.com/kshitiz?url=${encodeURIComponent(shortUrl)}`);
+                title = musicRecognitionResponse.data.title;
+
+                const searchResponse = await axios.get(`https://youtube-kshitiz.vercel.app/youtube?search=${encodeURIComponent(title)}`);
+                if (searchResponse.data.length > 0) {
+                    videoId = searchResponse.data[0].videoId;
+                }
+
+                shortUrl = await globalThis.utils.shortenURL(shortUrl);
+            } else {
+                message.reply(getLang("invalidAttachment"));
+                return;
             }
-
-            shortUrl = await utils.shortenURL(shortUrl);
-
-        } else if (args.length === 0) {
-            // If no arguments are provided
+        } 
+        // Check if no arguments were provided and no message was replied to
+        else if (args.length === 0) {
             message.reply(getLang("missingArgs"));
             return;
-        } else {
-            // Search for the video based on the argument
+        } 
+        // Search for the video based on the argument if no message reply exists
+        else {
             title = args.join(" ");
             const searchResponse = await axios.get(`https://youtube-kshitiz.vercel.app/youtube?search=${encodeURIComponent(title)}`);
             if (searchResponse.data.length > 0) {
@@ -72,7 +70,7 @@ async function onCall({ message, args, getLang, extra, data, userPermissions, pr
 
             const videoUrlResponse = await axios.get(`https://youtube-kshitiz.vercel.app/download?id=${encodeURIComponent(videoId)}`);
             if (videoUrlResponse.data.length > 0) {
-                shortUrl = await utils.shortenURL(videoUrlResponse.data[0]);
+                shortUrl = await globalThis.utils.shortenURL(videoUrlResponse.data[0]);
             }
         }
 
